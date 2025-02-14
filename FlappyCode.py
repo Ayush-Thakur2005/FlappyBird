@@ -1,138 +1,151 @@
 import pygame
 import random
+import sys
 
-# Initialize Pygame
+# Initialize pygame
 pygame.init()
 
-# Set up game constants
-WIDTH, HEIGHT = 800, 600
-CELL_SIZE = 20
-FPS = 15
+# Screen dimensions
+WIDTH = 400
+HEIGHT = 600
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption('Flappy Bird Clone')
+
+# Game constants
+GRAVITY = 0.5
+FLAP_STRENGTH = -10
+PIPE_WIDTH = 60
+PIPE_HEIGHT = 500
+PIPE_GAP = 150
+BIRD_WIDTH = 30
+BIRD_HEIGHT = 30
 
 # Colors
-BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
+BLACK = (0, 0, 0)
 GREEN = (0, 255, 0)
-RED = (255, 0, 0)
 BLUE = (0, 0, 255)
 
-# Set up display
-screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("Snake Game")
+# Load assets
+bird_image = pygame.Surface((BIRD_WIDTH, BIRD_HEIGHT))
+bird_image.fill(BLUE)
 
-# Font for score
-font = pygame.font.SysFont("arial", 36)
-
-# Snake class
-class Snake:
+# Bird class
+class Bird:
     def __init__(self):
-        self.body = [(100, 100), (80, 100), (60, 100)]  # Initial snake
-        self.direction = 'RIGHT'
-        self.grow = False
+        self.x = 50
+        self.y = HEIGHT // 2
+        self.vel = 0
     
-    def move(self):
-        head_x, head_y = self.body[0]
-        if self.direction == 'UP':
-            head_y -= CELL_SIZE
-        elif self.direction == 'DOWN':
-            head_y += CELL_SIZE
-        elif self.direction == 'LEFT':
-            head_x -= CELL_SIZE
-        elif self.direction == 'RIGHT':
-            head_x += CELL_SIZE
+    def update(self):
+        # Apply gravity
+        self.vel += GRAVITY
+        self.y += self.vel
+        
+        # Prevent bird from falling off the screen
+        if self.y > HEIGHT - BIRD_HEIGHT:
+            self.y = HEIGHT - BIRD_HEIGHT
+        if self.y < 0:
+            self.y = 0
+    
+    def flap(self):
+        self.vel = FLAP_STRENGTH
+    
+    def draw(self, screen):
+        screen.blit(bird_image, (self.x, self.y))
 
-        new_head = (head_x, head_y)
-        if self.grow:
-            self.body.insert(0, new_head)
-            self.grow = False
-        else:
-            self.body.insert(0, new_head)
-            self.body.pop()
+# Pipe class
+class Pipe:
+    def __init__(self):
+        self.x = WIDTH
+        self.height = random.randint(100, HEIGHT - PIPE_GAP)
+        self.top = pygame.Rect(self.x, 0, PIPE_WIDTH, self.height)
+        self.bottom = pygame.Rect(self.x, self.height + PIPE_GAP, PIPE_WIDTH, HEIGHT - self.height - PIPE_GAP)
 
-    def grow_snake(self):
-        self.grow = True
+    def update(self):
+        self.x -= 5
+        self.top.x = self.x
+        self.bottom.x = self.x
 
-    def collision(self):
-        head_x, head_y = self.body[0]
-        # Check if snake hits the wall
-        if head_x < 0 or head_x >= WIDTH or head_y < 0 or head_y >= HEIGHT:
-            return True
-        # Check if snake hits itself
-        if (head_x, head_y) in self.body[1:]:
+    def draw(self, screen):
+        pygame.draw.rect(screen, GREEN, self.top)
+        pygame.draw.rect(screen, GREEN, self.bottom)
+    
+    def off_screen(self):
+        return self.x < -PIPE_WIDTH
+
+    def collide(self, bird):
+        bird_rect = pygame.Rect(bird.x, bird.y, BIRD_WIDTH, BIRD_HEIGHT)
+        if bird_rect.colliderect(self.top) or bird_rect.colliderect(self.bottom):
             return True
         return False
 
-    def draw(self, screen):
-        for segment in self.body:
-            pygame.draw.rect(screen, GREEN, (segment[0], segment[1], CELL_SIZE, CELL_SIZE))
-
-# Food class
-class Food:
-    def __init__(self):
-        self.x = random.randrange(0, WIDTH, CELL_SIZE)
-        self.y = random.randrange(0, HEIGHT, CELL_SIZE)
-    
-    def spawn(self):
-        self.x = random.randrange(0, WIDTH, CELL_SIZE)
-        self.y = random.randrange(0, HEIGHT, CELL_SIZE)
-    
-    def draw(self, screen):
-        pygame.draw.rect(screen, RED, (self.x, self.y, CELL_SIZE, CELL_SIZE))
-
 # Main game loop
 def game():
+    bird = Bird()
+    pipes = [Pipe()]
     clock = pygame.time.Clock()
-    snake = Snake()
-    food = Food()
     score = 0
     running = True
+    game_over = False
 
     while running:
-        screen.fill(BLACK)
-        
-        # Handle events
+        screen.fill(WHITE)
+
+        # Event handling
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
-            elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_UP and snake.direction != 'DOWN':
-                    snake.direction = 'UP'
-                elif event.key == pygame.K_DOWN and snake.direction != 'UP':
-                    snake.direction = 'DOWN'
-                elif event.key == pygame.K_LEFT and snake.direction != 'RIGHT':
-                    snake.direction = 'LEFT'
-                elif event.key == pygame.K_RIGHT and snake.direction != 'LEFT':
-                    snake.direction = 'RIGHT'
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_SPACE and not game_over:
+                    bird.flap()
 
-        # Move snake
-        snake.move()
+        if not game_over:
+            bird.update()
 
-        # Check for collision
-        if snake.collision():
-            running = False
+            # Update pipes
+            for pipe in pipes:
+                pipe.update()
+                if pipe.off_screen():
+                    pipes.remove(pipe)
+                    pipes.append(Pipe())
+                    score += 1
 
-        # Check for food collision
-        if snake.body[0] == (food.x, food.y):
-            score += 1
-            snake.grow_snake()
-            food.spawn()
+            # Check for collisions
+            for pipe in pipes:
+                if pipe.collide(bird):
+                    game_over = True
 
-        # Draw everything
-        snake.draw(screen)
-        food.draw(screen)
+            # Draw everything
+            bird.draw(screen)
+            for pipe in pipes:
+                pipe.draw(screen)
+            
+            # Draw score
+            font = pygame.font.SysFont("Arial", 24)
+            score_text = font.render(f"Score: {score}", True, BLACK)
+            screen.blit(score_text, (10, 10))
+        else:
+            # Game Over screen
+            font = pygame.font.SysFont("Arial", 36)
+            game_over_text = font.render("GAME OVER", True, BLACK)
+            screen.blit(game_over_text, (WIDTH // 4, HEIGHT // 3))
 
-        # Draw score
-        score_text = font.render(f"Score: {score}", True, WHITE)
-        screen.blit(score_text, (10, 10))
+            score_text = font.render(f"Score: {score}", True, BLACK)
+            screen.blit(score_text, (WIDTH // 4, HEIGHT // 2))
 
-        # Update the display
+            restart_text = font.render("Press R to Restart", True, BLACK)
+            screen.blit(restart_text, (WIDTH // 4, HEIGHT // 1.5))
+
+            if pygame.key.get_pressed()[pygame.K_r]:
+                game()
+                return
+
         pygame.display.update()
-
-        # Control the game speed
-        clock.tick(FPS)
+        clock.tick(60)
 
     pygame.quit()
+    sys.exit()
 
-# Run the game
 if __name__ == "__main__":
     game()
